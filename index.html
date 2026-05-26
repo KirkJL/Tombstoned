@@ -212,10 +212,95 @@ button {
   box-shadow: 0 18px 40px rgba(102,224,255,0.22);
 }
 
-@media (max-width: 760px) {
-  .scorePanel { width: calc(100vw - 48px); }
+#mobileControls {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  display: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.stickZone {
+  position: absolute;
+  left: 22px;
+  bottom: 24px;
+  width: 138px;
+  height: 138px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(5,10,16,0.36);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+}
+
+.stickKnob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin-left: -29px;
+  margin-top: -29px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.72);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+}
+
+.touchLookZone {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 58vw;
+  height: 100vh;
+  pointer-events: auto;
+}
+
+.mobileButtons {
+  position: absolute;
+  right: 18px;
+  bottom: 24px;
+  width: 190px;
+  height: 178px;
+  pointer-events: auto;
+}
+
+.mobileBtn {
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(5,10,16,0.54);
+  backdrop-filter: blur(12px);
+  color: white;
+  font-weight: 900;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.34);
+}
+
+.mobileBtn.primary {
+  width: 70px;
+  height: 70px;
+  background: rgba(255,255,255,0.78);
+  color: #071019;
+}
+
+.mobileBtn[data-act="jump"] { right: 50px; bottom: 0; }
+.mobileBtn[data-act="dive"] { right: 0; bottom: 72px; }
+.mobileBtn[data-act="flipL"] { right: 104px; bottom: 78px; }
+.mobileBtn[data-act="flipR"] { right: 52px; bottom: 118px; }
+.mobileBtn[data-act="respawn"] { right: 130px; bottom: 18px; width: 46px; height: 46px; font-size: 10px; }
+
+@media (max-width: 900px), (pointer: coarse) {
+  .scorePanel { width: min(310px, calc(100vw - 32px)); left: 16px; top: 48px; }
+  .brand { left: 18px; top: 18px; }
   .controls { display: none; }
-  #prompt { bottom: 26px; }
+  #prompt { bottom: 178px; min-width: 0; width: calc(100vw - 36px); font-size: 12px; }
+  #mobileControls { display: block; }
 }
 
   </style>
@@ -227,7 +312,19 @@ button {
       <p>A one-file third-person cliff diving MVP. Explore the island, send it off the cliffs, throw flips, and try to enter the water clean instead of becoming shoreline confetti.</p>
       <button id="startBtn">Click to Play</button>
     </div>
-  </div>  <div id="fade"></div>  <div id="hud">
+  </div>  <div id="fade"></div>  <div id="mobileControls" aria-hidden="true">
+    <div class="touchLookZone" id="touchLookZone"></div>
+    <div class="stickZone" id="stickZone">
+      <div class="stickKnob" id="stickKnob"></div>
+    </div>
+    <div class="mobileButtons">
+      <div class="mobileBtn primary" data-act="jump">JUMP</div>
+      <div class="mobileBtn" data-act="dive">DIVE</div>
+      <div class="mobileBtn" data-act="flipL">FLIP</div>
+      <div class="mobileBtn" data-act="flipR">ROLL</div>
+      <div class="mobileBtn" data-act="respawn">RESET</div>
+    </div>
+  </div>  <div id="hud">
     <div class="brand">TOMBSTONE // MVP</div>
     <div class="scorePanel">
       <h1 id="score">0</h1>
@@ -257,21 +354,113 @@ button {
     class Input {
       constructor(dom) {
         this.keys = new Set();
+        this.touchKeys = new Set();
+        this.mobileMove = new THREE.Vector2(0, 0);
         this.mouseDX = 0;
         this.mouseDY = 0;
         this.pointerLocked = false;
+        this.isTouch = matchMedia('(pointer: coarse)').matches;
         window.addEventListener('keydown', e => this.keys.add(e.code));
         window.addEventListener('keyup', e => this.keys.delete(e.code));
         document.addEventListener('pointerlockchange', () => {
           this.pointerLocked = document.pointerLockElement === dom;
         });
         window.addEventListener('mousemove', e => {
-          if (!this.pointerLocked) return;
+          if (!this.pointerLocked && !this.isTouch) return;
           this.mouseDX += e.movementX;
           this.mouseDY += e.movementY;
         });
+        this.setupTouchControls();
       }
-      down(code) { return this.keys.has(code); }
+      down(code) { return this.keys.has(code) || this.touchKeys.has(code); }
+      setupTouchControls() {
+        const stickZone = document.getElementById('stickZone');
+        const stickKnob = document.getElementById('stickKnob');
+        const lookZone = document.getElementById('touchLookZone');
+        if (!stickZone || !stickKnob || !lookZone) return;
+
+        let stickId = null;
+        const updateStick = (touch) => {
+          const rect = stickZone.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const dx = touch.clientX - cx;
+          const dy = touch.clientY - cy;
+          const max = rect.width * 0.34;
+          const len = Math.hypot(dx, dy) || 1;
+          const nx = clamp(dx / max, -1, 1);
+          const ny = clamp(dy / max, -1, 1);
+          const limitedX = dx / len * Math.min(len, max);
+          const limitedY = dy / len * Math.min(len, max);
+          stickKnob.style.transform = `translate(${limitedX}px, ${limitedY}px)`;
+          this.mobileMove.set(nx, ny);
+          if (Math.hypot(nx, ny) > 0.72) this.touchKeys.add('ShiftLeft');
+          else this.touchKeys.delete('ShiftLeft');
+        };
+        const resetStick = () => {
+          stickId = null;
+          this.mobileMove.set(0, 0);
+          this.touchKeys.delete('ShiftLeft');
+          stickKnob.style.transform = 'translate(0px, 0px)';
+        };
+        stickZone.addEventListener('touchstart', e => {
+          e.preventDefault();
+          const t = e.changedTouches[0];
+          stickId = t.identifier;
+          updateStick(t);
+        }, { passive: false });
+        stickZone.addEventListener('touchmove', e => {
+          e.preventDefault();
+          for (const t of e.changedTouches) if (t.identifier === stickId) updateStick(t);
+        }, { passive: false });
+        stickZone.addEventListener('touchend', e => {
+          for (const t of e.changedTouches) if (t.identifier === stickId) resetStick();
+        });
+        stickZone.addEventListener('touchcancel', resetStick);
+
+        let lookId = null;
+        let lastX = 0;
+        let lastY = 0;
+        lookZone.addEventListener('touchstart', e => {
+          const t = e.changedTouches[0];
+          lookId = t.identifier;
+          lastX = t.clientX;
+          lastY = t.clientY;
+        }, { passive: true });
+        lookZone.addEventListener('touchmove', e => {
+          e.preventDefault();
+          for (const t of e.changedTouches) {
+            if (t.identifier !== lookId) continue;
+            this.mouseDX += (t.clientX - lastX) * 1.25;
+            this.mouseDY += (t.clientY - lastY) * 1.25;
+            lastX = t.clientX;
+            lastY = t.clientY;
+          }
+        }, { passive: false });
+        lookZone.addEventListener('touchend', e => {
+          for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null;
+        });
+        lookZone.addEventListener('touchcancel', () => { lookId = null; });
+
+        document.querySelectorAll('.mobileBtn').forEach(btn => {
+          const map = {
+            jump: 'Space',
+            dive: 'KeyE',
+            flipL: 'KeyQ',
+            flipR: 'KeyR',
+            respawn: 'KeyF'
+          };
+          const code = map[btn.dataset.act];
+          const press = e => { e.preventDefault(); this.touchKeys.add(code); };
+          const release = e => { e.preventDefault(); this.touchKeys.delete(code); };
+          btn.addEventListener('touchstart', press, { passive: false });
+          btn.addEventListener('touchend', release, { passive: false });
+          btn.addEventListener('touchcancel', release, { passive: false });
+          btn.addEventListener('pointerdown', press);
+          btn.addEventListener('pointerup', release);
+          btn.addEventListener('pointerleave', release);
+        });
+      }
       consumeMouse() {
         const out = { x: this.mouseDX, y: this.mouseDY };
         this.mouseDX = 0;
@@ -774,6 +963,10 @@ button {
         if (input.down('KeyS')) wish.sub(forward);
         if (input.down('KeyD')) wish.add(right);
         if (input.down('KeyA')) wish.sub(right);
+        if (input.mobileMove.lengthSq() > 0.01) {
+          wish.addScaledVector(right, input.mobileMove.x);
+          wish.addScaledVector(forward, -input.mobileMove.y);
+        }
         if (wish.lengthSq() > 0) wish.normalize();
 
         const sprint = input.down('ShiftLeft') || input.down('ShiftRight');
@@ -1023,7 +1216,7 @@ button {
       document.getElementById('start').style.display = 'none';
       started = true;
       audio.start();
-      renderer.domElement.requestPointerLock();
+      if (!input.isTouch) renderer.domElement.requestPointerLock();
     });
 
     renderer.domElement.addEventListener('click', () => {
