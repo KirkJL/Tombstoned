@@ -629,28 +629,35 @@ button {
         this.parts[name + 'End'] = end;
       }
 
-      update(dt, velocity, grounded, diving, trickRoll) {
-        this.poseDive = lerp(this.poseDive, diving ? 1 : 0, 0.1);
+      update(dt, velocity, grounded, trickState) {
+        const diving = trickState.pose === 'dive';
+        this.poseDive = lerp(this.poseDive, diving ? 1 : 0, 0.12);
         const speed = Math.hypot(velocity.x, velocity.z);
         this.wobble += dt * (grounded ? clamp(speed * 5, 3, 14) : 2.5);
         const walk = grounded ? Math.sin(this.wobble) * clamp(speed / 8, 0, 1) : 0;
         const airTense = grounded ? 0 : 1;
+        const flipTuck = trickState.pose === 'frontFlip' || trickState.pose === 'backFlip' ? 1 : 0;
+        const rollPose = trickState.pose === 'barrelRoll' ? 1 : 0;
 
-        this.parts.armLUpper.rotation.x = lerp(this.parts.armLUpper.rotation.x, -0.2 - this.poseDive * 1.8 + walk * 0.55, 0.18);
-        this.parts.armRUpper.rotation.x = lerp(this.parts.armRUpper.rotation.x, -0.2 - this.poseDive * 1.8 - walk * 0.55, 0.18);
-        this.parts.armLUpper.rotation.z = lerp(this.parts.armLUpper.rotation.z, 0.48 - this.poseDive * 0.52, 0.18);
-        this.parts.armRUpper.rotation.z = lerp(this.parts.armRUpper.rotation.z, -0.48 + this.poseDive * 0.52, 0.18);
-        this.parts.armLLower.rotation.x = lerp(this.parts.armLLower.rotation.x, -0.4 - this.poseDive * 0.8, 0.18);
-        this.parts.armRLower.rotation.x = lerp(this.parts.armRLower.rotation.x, -0.4 - this.poseDive * 0.8, 0.18);
+        const armReach = this.poseDive;
+        const armTuck = flipTuck;
+        const armWide = rollPose;
 
-        this.parts.legLUpper.rotation.x = lerp(this.parts.legLUpper.rotation.x, walk * -0.55 + this.poseDive * 0.22, 0.16);
-        this.parts.legRUpper.rotation.x = lerp(this.parts.legRUpper.rotation.x, walk * 0.55 + this.poseDive * 0.22, 0.16);
-        this.parts.legLLower.rotation.x = lerp(this.parts.legLLower.rotation.x, Math.max(0, walk) * 0.42 - airTense * 0.16, 0.16);
-        this.parts.legRLower.rotation.x = lerp(this.parts.legRLower.rotation.x, Math.max(0, -walk) * 0.42 - airTense * 0.16, 0.16);
+        this.parts.armLUpper.rotation.x = lerp(this.parts.armLUpper.rotation.x, -0.2 - armReach * 1.9 + armTuck * 1.25 + walk * 0.55, 0.2);
+        this.parts.armRUpper.rotation.x = lerp(this.parts.armRUpper.rotation.x, -0.2 - armReach * 1.9 + armTuck * 1.25 - walk * 0.55, 0.2);
+        this.parts.armLUpper.rotation.z = lerp(this.parts.armLUpper.rotation.z, 0.48 - armReach * 0.5 + armTuck * 0.85 + armWide * 1.2, 0.2);
+        this.parts.armRUpper.rotation.z = lerp(this.parts.armRUpper.rotation.z, -0.48 + armReach * 0.5 - armTuck * 0.85 - armWide * 1.2, 0.2);
+        this.parts.armLLower.rotation.x = lerp(this.parts.armLLower.rotation.x, -0.4 - armReach * 0.8 + armTuck * 1.1, 0.2);
+        this.parts.armRLower.rotation.x = lerp(this.parts.armRLower.rotation.x, -0.4 - armReach * 0.8 + armTuck * 1.1, 0.2);
 
-        this.parts.torso.rotation.x = lerp(this.parts.torso.rotation.x, this.poseDive * -0.65 + (!grounded ? -0.12 : 0), 0.08);
-        this.parts.torso.rotation.z = lerp(this.parts.torso.rotation.z, trickRoll * 0.015, 0.1);
-        this.parts.head.rotation.x = lerp(this.parts.head.rotation.x, this.poseDive * 0.35, 0.1);
+        this.parts.legLUpper.rotation.x = lerp(this.parts.legLUpper.rotation.x, walk * -0.55 + armReach * 0.22 + flipTuck * 1.25, 0.18);
+        this.parts.legRUpper.rotation.x = lerp(this.parts.legRUpper.rotation.x, walk * 0.55 + armReach * 0.22 + flipTuck * 1.25, 0.18);
+        this.parts.legLLower.rotation.x = lerp(this.parts.legLLower.rotation.x, Math.max(0, walk) * 0.42 - airTense * 0.16 - flipTuck * 1.35, 0.18);
+        this.parts.legRLower.rotation.x = lerp(this.parts.legRLower.rotation.x, Math.max(0, -walk) * 0.42 - airTense * 0.16 - flipTuck * 1.35, 0.18);
+
+        this.parts.torso.rotation.x = lerp(this.parts.torso.rotation.x, armReach * -0.65 + flipTuck * 0.55 + (!grounded ? -0.12 : 0), 0.1);
+        this.parts.torso.rotation.z = lerp(this.parts.torso.rotation.z, rollPose * Math.sin(this.wobble * 3) * 0.28, 0.12);
+        this.parts.head.rotation.x = lerp(this.parts.head.rotation.x, armReach * 0.35 - flipTuck * 0.5, 0.12);
       }
     }
 
@@ -932,6 +939,10 @@ button {
         this.maxHeight = this.pos.y;
         this.diving = false;
         this.trickRoll = 0;
+        this.frontFlipAngle = 0;
+        this.backFlipAngle = 0;
+        this.barrelRollAngle = 0;
+        this.trickState = { pose: 'fall', front: 0, back: 0, roll: 0 };
         this.rotations = 0;
         this.lastRoll = 0;
         this.wipeout = false;
@@ -948,6 +959,10 @@ button {
         this.airTime = 0;
         this.diving = false;
         this.trickRoll = 0;
+        this.frontFlipAngle = 0;
+        this.backFlipAngle = 0;
+        this.barrelRollAngle = 0;
+        this.trickState = { pose: 'fall', front: 0, back: 0, roll: 0 };
         this.rotations = 0;
         this.wipeout = false;
         this.model.root.rotation.set(0, 0, 0);
@@ -985,12 +1000,27 @@ button {
         }
 
         this.diving = input.down('KeyE');
+        const frontFlip = input.down('KeyQ');
+        const backFlip = input.down('KeyR');
+        const barrelRoll = input.down('KeyE') && (input.down('KeyQ') || input.down('KeyR'));
+
         if (!this.grounded) {
-          if (input.down('KeyQ')) this.trickRoll -= 4.6 * dt;
-          if (input.down('KeyR')) this.trickRoll += 4.6 * dt;
+          if (frontFlip && !barrelRoll) this.frontFlipAngle += 5.2 * dt;
+          if (backFlip && !barrelRoll) this.backFlipAngle += 5.2 * dt;
+          if (barrelRoll) this.barrelRollAngle += (input.down('KeyQ') ? -1 : 1) * 6.4 * dt;
         } else {
-          this.trickRoll = lerp(this.trickRoll, 0, 0.14);
+          this.frontFlipAngle = lerp(this.frontFlipAngle, 0, 0.18);
+          this.backFlipAngle = lerp(this.backFlipAngle, 0, 0.18);
+          this.barrelRollAngle = lerp(this.barrelRollAngle, 0, 0.18);
         }
+
+        this.trickState = {
+          pose: this.grounded ? 'run' : barrelRoll ? 'barrelRoll' : frontFlip ? 'frontFlip' : backFlip ? 'backFlip' : this.diving ? 'dive' : 'fall',
+          front: this.frontFlipAngle,
+          back: this.backFlipAngle,
+          roll: this.barrelRollAngle
+        };
+        this.trickRoll = this.barrelRollAngle;
 
         this.vel.y -= 22.5 * dt;
         const old = this.pos.clone();
@@ -1027,8 +1057,9 @@ button {
         if (speed2d > 0.15) this.yaw = Math.atan2(this.vel.x, this.vel.z);
         this.group.position.copy(this.pos);
         this.group.rotation.y = this.yaw;
-        this.model.root.rotation.z = this.trickRoll;
-        this.model.update(dt, this.vel, this.grounded, this.diving, this.trickRoll);
+        this.model.root.rotation.x = this.frontFlipAngle - this.backFlipAngle;
+        this.model.root.rotation.z = this.barrelRollAngle;
+        this.model.update(dt, this.vel, this.grounded, this.trickState);
       }
 
       wipeoutOnLand(impact) {
@@ -1042,18 +1073,32 @@ button {
       handleWaterEntry() {
         const fall = Math.max(0, this.jumpStartY - this.world.waterY);
         const speed = this.vel.length();
-        const uprightPenalty = this.diving ? 0.25 : 0.65;
-        const angleQuality = clamp(1 - Math.abs(this.model.root.rotation.z % TAU) * 0.15 - uprightPenalty, 0, 1);
-        const trickBonus = Math.abs(this.trickRoll) * 22;
-        const clean = angleQuality > 0.48 && this.diving;
-        const points = Math.floor(fall * 18 + this.airTime * 95 + speed * 10 + trickBonus + (clean ? 850 : -180));
+        const frontTurns = this.frontFlipAngle / TAU;
+        const backTurns = this.backFlipAngle / TAU;
+        const rollTurns = Math.abs(this.barrelRollAngle) / TAU;
+        const totalTurns = frontTurns + backTurns + rollTurns;
+        const nearestFront = Math.abs(frontTurns - Math.round(frontTurns));
+        const nearestBack = Math.abs(backTurns - Math.round(backTurns));
+        const nearestRoll = Math.abs(rollTurns - Math.round(rollTurns));
+
+        const triedTrick = totalTurns > 0.18;
+        const completedTrick = !triedTrick || Math.min(nearestFront, nearestBack, nearestRoll) < 0.22 || totalTurns < 0.35;
+        const verticalSpeedGood = Math.abs(this.vel.y) > Math.max(8, speed * 0.45);
+        const divePoseGood = this.diving || !triedTrick;
+        const clean = verticalSpeedGood && divePoseGood && completedTrick;
+
+        const styleName = rollTurns > 0.35 ? 'Barrel Roll' : frontTurns > backTurns && frontTurns > 0.25 ? 'Front Flip' : backTurns > 0.25 ? 'Back Flip' : this.diving ? 'Dive' : 'Jump';
+        const trickBonus = Math.floor(frontTurns * 620 + backTurns * 680 + rollTurns * 520);
+        const cleanBonus = clean ? 900 : 120;
+        const sloppyPenalty = clean ? 0 : 260;
+        const points = Math.floor(fall * 20 + this.airTime * 110 + speed * 12 + trickBonus + cleanBonus - sloppyPenalty);
         this.score = Math.max(0, points);
         this.best = Math.max(this.best, this.score);
         localStorage.setItem('tombstone_best', String(this.best));
 
         spawnSplash(this.pos.clone(), clean);
-        this.audio.blip(clean ? 320 : 90, clean ? 0.12 : 0.16, clean ? 0.22 : 0.34);
-        showResult(clean ? 'CLEAN ENTRY' : 'SLOPPY IMPACT', `${clean ? '+' : ''}${this.score} points · ${Math.round(fall)}m drop · ${this.airTime.toFixed(1)}s airtime`, !clean);
+        this.audio.blip(clean ? 320 : 120, clean ? 0.12 : 0.13, clean ? 0.22 : 0.24);
+        showResult(clean ? `${styleName.toUpperCase()} LANDED` : `${styleName.toUpperCase()} SPLASHDOWN`, `${this.score} points · ${Math.round(fall)}m · ${this.airTime.toFixed(1)}s · ${totalTurns.toFixed(1)} rotations`, !clean);
 
         this.pos.set(-6, 2.2, 24);
         this.vel.set(0, 0, 0);
@@ -1061,6 +1106,11 @@ button {
         this.airTime = 0;
         this.diving = false;
         this.trickRoll = 0;
+        this.frontFlipAngle = 0;
+        this.backFlipAngle = 0;
+        this.barrelRollAngle = 0;
+        this.trickState = { pose: 'fall', front: 0, back: 0, roll: 0 };
+        this.model.root.rotation.set(0, 0, 0);
         this.lastSafe.copy(this.pos);
       }
     }
